@@ -1,15 +1,21 @@
 package note
 
 import (
+	"ListBotTG/internal/models"
+	"ListBotTG/internal/usecases"
 	"context"
-	"fmt"
 )
 
-func (s *Service) ShowListNote(ctx context.Context, page1, page2 int) error {
-	if page1 >= 2 && (page2-page1) <= 100 {
-		s.repo.ShowListNote(ctx, page1, page2)
-	} else {
-		return fmt.Errorf("слишком большое значение поиска")
+func (s *Service) ShowListNote(ctx context.Context, page1, page2 int) ([]usecases.NoteDTO, error) {
+
+	if !(page1 >= 2 && (page2-page1) <= 100) {
+		return nil, models.RangeOverflow
 	}
-	return nil
+
+	answerSliceNote, err := s.repo.ShowListNote(ctx, page1, page2)
+	if err != nil {
+		return nil, models.ErrorFromLocalStorage
+	}
+
+	return answerSliceNote, nil
 }

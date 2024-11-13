@@ -1,6 +1,6 @@
 package models
 
 type Note struct {
-	ID    int
+	ID    IDNote
 	Email string
 }

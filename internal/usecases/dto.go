@@ -1,7 +1,6 @@
 package usecases
 
-import "ListBotTG/internal/models"
-
 type NoteDTO struct {
-	models.Note
+	ID    uint64
+	Email string
 }

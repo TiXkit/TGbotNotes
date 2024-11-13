@@ -3,6 +3,7 @@ package repositories
 import (
 	"ListBotTG/internal/configs"
 	"ListBotTG/internal/models"
+	"ListBotTG/internal/usecases"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -12,16 +13,17 @@ import (
 )
 
 type NoteLocalRepository struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
+	PathToStorage string
 }
 
 func NewNoteRepos(db *sql.DB) *NoteLocalRepository {
 	return &NoteLocalRepository{}
 }
 
+var _ usecases.INote = (*NoteLocalRepository)(nil)
+
 func (nr *NoteLocalRepository) AddNote(ctx context.Context, note *models.Note) (int, error) {
-	file, err := os.OpenFile(configs.PathFileLocalStorage, os.O_RDWR|os.O_APPEND, 0644)
+	file, err := os.OpenFile(nr.PathToStorage, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return 0, fmt.Errorf("ошибка при открытии файла")
 	}
@@ -30,7 +32,7 @@ func (nr *NoteLocalRepository) AddNote(ctx context.Context, note *models.Note) (
 	//jsonStructForNoteDecoder := struct {
 	//ID int
 	//Name string}{} или лучше так?
-	var notesDecoder models.Note // Стоит ли так делать или нужно объявлять для этого новую структуру
+	var notesDecoder usecases.NoteDTO // Стоит ли так делать или нужно объявлять для этого новую структуру
 	counterIDJson := 0
 
 	for {
@@ -47,21 +49,20 @@ func (nr *NoteLocalRepository) AddNote(ctx context.Context, note *models.Note) (
 		counterIDJson++ // высчитываем последний ID
 	}
 
-	note.ID = counterIDJson + 1 // присваиваем полю переменной типа структуры ID
+	note.ID = models.IDNote(counterIDJson + 1) // присваиваем полю переменной типа структуры ID
 	noteInByte, err := json.Marshal(note)
 	if err != nil {
 		return 0, err
 	}
-
 	if _, err := file.WriteString(string(noteInByte) + "\n"); err != nil { // добавляем в файл
 		return 0, fmt.Errorf("ошибка при записи в файл")
 	}
 
-	return counterIDJson, nil
+	return counterIDJson + 1, nil
 }
 
 func (nr *NoteLocalRepository) DropNote(ctx context.Context, note *models.Note) error {
-	file, err := os.OpenFile(configs.PathFileLocalStorage, os.O_RDWR|os.O_APPEND, 0644)
+	file, err := os.OpenFile(nr.PathToStorage, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("ошибка при открытии файла")
 	}
@@ -74,7 +75,7 @@ func (nr *NoteLocalRepository) DropNote(ctx context.Context, note *models.Note) 
 		searchField = note.ID
 	}
 	var counterIDJson int
-	var notesDecoder models.Note
+	var notesDecoder usecases.NoteDTO
 	fileFound := false
 
 	for {
@@ -84,12 +85,11 @@ func (nr *NoteLocalRepository) DropNote(ctx context.Context, note *models.Note) 
 			}
 			return fmt.Errorf("ошибка при декодировании файла")
 		}
-
-		counterIDJson++
 		if notesDecoder.Email == searchField || notesDecoder.ID == searchField {
 			fileFound = true // Если мы нашли мыло
 			break
 		}
+		counterIDJson++
 	}
 
 	if !fileFound {
@@ -100,7 +100,6 @@ func (nr *NoteLocalRepository) DropNote(ctx context.Context, note *models.Note) 
 	if err != nil {
 		return fmt.Errorf("ошибка при чтении файла")
 	}
-
 	linesFile := strings.Split(string(fileReadBytes), "\n") // разбирает строку на массив, с помощью разделителя
 	if counterIDJson >= 0 && counterIDJson < len(linesFile) {
 		linesFile = append(linesFile[:counterIDJson], linesFile[counterIDJson+1:]...)
@@ -114,30 +113,28 @@ func (nr *NoteLocalRepository) DropNote(ctx context.Context, note *models.Note) 
 	return nil
 }
 
-func (nr *NoteLocalRepository) ShowListNote(ctx context.Context, page1, page2 int) ([]models.Note, error) {
-	file, err := os.OpenFile(configs.PathFileLocalStorage, os.O_RDONLY, 0644)
+func (nr *NoteLocalRepository) ShowListNote(ctx context.Context, page1, page2 int) ([]usecases.NoteDTO, error) {
+	file, err := os.OpenFile(nr.PathToStorage, os.O_RDONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка при открытии файла")
 	}
 	defer file.Close()
 
 	// Нужно от n-page1 показать все записи до n-page2, (2 <= (Npage2 - Npage1) <= 100)
-	var notesDecoder models.Note
-	var counterIDJson int
-	sliceNotesForDecoding := make([]models.Note, page2-page1, page2-page1)
+	var notesDecoder usecases.NoteDTO
+	sliceNotesForDecoding := make([]usecases.NoteDTO, page2-page1, page2-page1)
 
-	for i := 0; i < page1; {
+	for i := 0; i < (page2 + 1); {
 		if err := json.NewDecoder(file).Decode(&notesDecoder); err != nil {
 			if err.Error() == "EOF" {
 				break
 			}
 			return nil, fmt.Errorf("ошибка при декодировании файла")
 		}
-		if (counterIDJson >= page1) && (counterIDJson <= page2) {
+		if (i >= page1) && (i <= page2) {
 			sliceNotesForDecoding[i] = notesDecoder
-			i++
 		}
-		counterIDJson++
+		i++
 	}
 	return sliceNotesForDecoding, nil
 }

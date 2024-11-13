@@ -11,3 +11,5 @@ type Service struct {
 func NewNoteService(repo usecases.INote) *Service {
 	return &Service{repo: repo}
 }
+
+var _ usecases.INoteManagementSystem = (*Service)(nil)
